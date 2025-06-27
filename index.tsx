@@ -94,128 +94,165 @@ document.addEventListener('DOMContentLoaded', async (event) => {
   const playground = new Playground();
   rootElement.appendChild(playground);
 
-  playground.sendMessageHandler = async (
-    input: string,
-    role: string,
-    code: string,
-    codeHasChanged: boolean,
-  ) => {
-    console.log(
-      'sendMessageHandler',
-      input,
-      role,
-      code,
-      'codeHasChanged:',
-      codeHasChanged,
+  // On vérifie si la clé API existe AVANT de configurer le chat
+  if (globalThis.process.env.GEMINI_API_KEY) {
+    const ai = new GoogleGenAI({
+      apiKey: globalThis.process.env.GEMINI_API_KEY,
+      apiVersion: 'v1alpha',
+    });
+
+    function createAiChat() {
+      return ai.chats.create({
+        model: 'gemini-2.5-pro',
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTIONS,
+          thinkingConfig: {
+            includeThoughts: true,
+          },
+        },
+      });
+    }
+
+    let aiChat = createAiChat();
+
+    playground.sendMessageHandler = async (
+      input: string,
+      role: string,
+      code: string,
+      codeHasChanged: boolean,
+    ) => {
+      console.log(
+        'sendMessageHandler',
+        input,
+        role,
+        code,
+        'codeHasChanged:',
+        codeHasChanged,
+      );
+
+      const {thinking, text} = playground.addMessage('assistant', '');
+      const message = [];
+
+      if (role.toUpperCase() === 'USER' && codeHasChanged) {
+        message.push({
+          role: 'user',
+          text: 'I have updated the code: ```javascript\n' + code + '\n```',
+        });
+      }
+
+      if (role.toUpperCase() === 'SYSTEM') {
+        message.push({
+          role: 'user',
+          text: `Interpreter reported: ${input}. Is it possible to improve that?`,
+        });
+      } else {
+        message.push({
+          role,
+          text: input,
+        });
+      }
+
+      playground.setChatState(ChatState.GENERATING);
+
+      text.innerHTML = '...';
+
+      let newCode = '';
+      let thought = '';
+
+      try {
+        const res = await aiChat.sendMessageStream({message});
+
+        for await (const chunk of res) {
+          for (const candidate of chunk.candidates ?? []) {
+            for (const part of candidate.content.parts ?? []) {
+              if (part.thought) {
+                playground.setChatState(ChatState.THINKING);
+                thought += part.text;
+                thinking.innerHTML = await marked.parse(thought);
+                thinking.parentElement.classList.remove('hidden');
+              } else if (part.text) {
+                playground.setChatState(ChatState.CODING);
+                newCode += part.text;
+                const p5Code = getCode(newCode);
+
+                // Remove the code block, it is available in the Code tab
+                const explanation = newCode.replace(
+                  '```javascript' + p5Code + '```',
+                  '',
+                );
+
+                text.innerHTML = await marked.parse(explanation);
+              }
+              playground.scrollToTheEnd();
+            }
+          }
+        }
+      } catch (e: any) { // Changed to 'any' to handle broader error types
+        console.error('GenAI SDK Error:', e.message);
+        let message = e.message;
+        const splitPos = e.message.indexOf('{');
+        if (splitPos > -1) {
+          const msgJson = e.message.substring(splitPos);
+          try {
+            const sdkError = JSON.parse(msgJson);
+            if (sdkError.error) {
+              message = sdkError.error.message;
+              message = await marked.parse(message);
+            }
+          } catch (e) {
+            console.error('Unable to parse the error message:', e);
+          }
+        }
+        const {text} = playground.addMessage('error', '');
+        text.innerHTML = message;
+      }
+
+      // close thinking block
+      thinking.parentElement.removeAttribute('open');
+
+      // If the answer was just code
+      if (text.innerHTML.trim().length === 0) {
+        text.innerHTML = 'Done';
+      }
+
+      const p5Code = getCode(newCode);
+      if (p5Code.trim().length > 0) {
+        playground.setCode(p5Code);
+      } else {
+        playground.addMessage('SYSTEM', 'There is no new code update.');
+      }
+      playground.setChatState(ChatState.IDLE);
+    };
+
+    playground.resetHandler = async () => {
+      aiChat = createAiChat();
+    };
+
+    playground.addMessage(
+      'USER',
+      'make a simple animation of the background color',
+    );
+    playground.addMessage('ASSISTANT', 'Here you go!');
+    playground.setInputField(
+      'Start from scratch and ' +
+        EXAMPLE_PROMPTS[Math.floor(Math.random() * EXAMPLE_PROMPTS.length)],
     );
 
-    const {thinking, text} = playground.addMessage('assistant', '');
-    const message = [];
-
-    if (role.toUpperCase() === 'USER' && codeHasChanged) {
-      message.push({
-        role: 'user',
-        text: 'I have updated the code: ```javascript\n' + code + '\n```',
-      });
+  } else {
+    // Si pas de clé API, on désactive le chat
+    console.log("No API Key found. Chat functionality disabled.");
+    const input = document.getElementById('messageInput') as HTMLInputElement;
+    if (input) {
+        input.placeholder = "Le chat IA est désactivé sur cette version.";
+        input.disabled = true;
     }
-
-    if (role.toUpperCase() === 'SYSTEM') {
-      message.push({
-        role: 'user',
-        text: `Interpreter reported: ${input}. Is it possible to improve that?`,
-      });
-    } else {
-      message.push({
-        role,
-        text: input,
-      });
+    const sendButton = document.getElementById('sendButton');
+    if (sendButton) {
+        sendButton.classList.add('disabled');
     }
+  }
 
-    playground.setChatState(ChatState.GENERATING);
-
-    text.innerHTML = '...';
-
-    let newCode = '';
-    let thought = '';
-
-    try {
-      const res = await aiChat.sendMessageStream({message});
-
-      for await (const chunk of res) {
-        for (const candidate of chunk.candidates ?? []) {
-          for (const part of candidate.content.parts ?? []) {
-            if (part.thought) {
-              playground.setChatState(ChatState.THINKING);
-              thought += part.text;
-              thinking.innerHTML = await marked.parse(thought);
-              thinking.parentElement.classList.remove('hidden');
-            } else if (part.text) {
-              playground.setChatState(ChatState.CODING);
-              newCode += part.text;
-              const p5Code = getCode(newCode);
-
-              // Remove the code block, it is available in the Code tab
-              const explanation = newCode.replace(
-                '```javascript' + p5Code + '```',
-                '',
-              );
-
-              text.innerHTML = await marked.parse(explanation);
-            }
-            playground.scrollToTheEnd();
-          }
-        }
-      }
-    } catch (e: GoogleGenAI.ClientError) {
-      console.error('GenAI SDK Error:', e.message);
-      let message = e.message;
-      const splitPos = e.message.indexOf('{');
-      if (splitPos > -1) {
-        const msgJson = e.message.substring(splitPos);
-        try {
-          const sdkError = JSON.parse(msgJson);
-          if (sdkError.error) {
-            message = sdkError.error.message;
-            message = await marked.parse(message);
-          }
-        } catch (e) {
-          console.error('Unable to parse the error message:', e);
-        }
-      }
-      const {text} = playground.addMessage('error', '');
-      text.innerHTML = message;
-    }
-
-    // close thinking block
-    thinking.parentElement.removeAttribute('open');
-
-    // If the answer was just code
-    if (text.innerHTML.trim().length === 0) {
-      text.innerHTML = 'Done';
-    }
-
-    const p5Code = getCode(newCode);
-    if (p5Code.trim().length > 0) {
-      playground.setCode(p5Code);
-    } else {
-      playground.addMessage('SYSTEM', 'There is no new code update.');
-    }
-    playground.setChatState(ChatState.IDLE);
-  };
-
-  playground.resetHandler = async () => {
-    aiChat = createAiChat();
-  };
-
+  // Ce code s'exécute dans tous les cas pour afficher le jeu
   playground.setDefaultCode(EMPTY_CODE);
-  playground.addMessage(
-    'USER',
-    'make a simple animation of the background color',
-  );
-  playground.addMessage('ASSISTANT', 'Here you go!');
   playground.setCode(STARTUP_CODE);
-  playground.setInputField(
-    'Start from scratch and ' +
-      EXAMPLE_PROMPTS[Math.floor(Math.random() * EXAMPLE_PROMPTS.length)],
-  );
 });
