@@ -343,13 +343,6 @@ export class Playground extends LitElement {
   }
 
   render() {
-    return html`<div class="playground">
-      {/* La barre latérale (sidebar) avec le chat et le texte a été supprimée. */}
-
-      <div class="main-container">
-        ${this.previewFrame}
-        {/* La barre d'outils (toolbar) avec les boutons a été supprimée. */}
-      </div>
-    </div>`;
+    return this.previewFrame;
   }
 }
