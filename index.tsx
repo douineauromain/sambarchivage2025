@@ -2,257 +2,297 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import {GoogleGenAI} from '@google/genai';
-import {ChatState, marked, Playground} from './playground';
+// On importe UNIQUEMENT le Playground, plus rien de l'IA.
+import {Playground} from './playground';
 
-const SYSTEM_INSTRUCTIONS = `you're an extremely proficient creative coding agent, and can code effects, games, generative art.
-write javascript code assuming it's in a live p5js environment.
-return the code block.
-you can include a short paragraph explaining your reasoning and the result in human readable form.
-there can be no external dependencies: all functions must be in the returned code.
-make extra sure that all functions are either declared in the code or part of p5js.
-the user can modify the code, go along with the user's changes.`;
-
+// On garde une version vide de base.
 const EMPTY_CODE = `function setup() {
-  // Setup code goes here.
   createCanvas(windowWidth, windowHeight);
 }
-
 function draw() {
-  // Frame drawing code goes here.
   background(175);
 }`;
 
-/* make a simple animation of the background color */
-const STARTUP_CODE = `function setup() {
+// CI-DESSOUS, LE CODE DE VOTRE JEU :
+const STARTUP_CODE = `
+// --- Game Configuration ---
+let player;
+let collectibles = [];
+let obstacles = [];
+let powerups = [];
+let score = 0;
+let gameState = 'start'; // 'start', 'playing', 'gameOver'
+
+let startTime;
+const GAME_DURATION = 30; // Game duration in seconds
+let gameOverReason = '';
+
+// --- Player Object ---
+class Player {
+  constructor() {
+    this.x = width / 2;
+    this.w = 80;
+    this.h = 60;
+    this.shieldActive = false;
+    this.multiplierActive = false;
+    this.powerupTimer = 0;
+  }
+
+  update() {
+    this.x = lerp(this.x, mouseX, 0.1);
+    this.x = constrain(this.x, this.w / 2, width - this.w / 2);
+
+    if (this.shieldActive || this.multiplierActive) {
+      this.powerupTimer--;
+      if (this.powerupTimer <= 0) {
+        this.shieldActive = false;
+        this.multiplierActive = false;
+      }
+    }
+  }
+
+  display() {
+    let y = height - 80;
+    if (this.shieldActive) this.drawAura(y, (frameCount * 2) % 360, 30);
+    if (this.multiplierActive) this.drawAura(y, 50, 50);
+
+    fill(30, 80, 80);
+    stroke(30, 80, 50);
+    strokeWeight(3);
+    rectMode(CENTER);
+    rect(this.x, y, this.w, this.h, 5);
+
+    this.drawFeather(this.x - 35, y - 20, -QUARTER_PI, 210);
+    this.drawFeather(this.x + 35, y - 20, QUARTER_PI, 60);
+  }
+
+  drawAura(y, hue, alpha) {
+    let auraSize = this.w + 40 + sin(frameCount * 0.2) * 10;
+    fill(hue, 80, 100, alpha);
+    noStroke();
+    ellipse(this.x, y, auraSize, auraSize);
+  }
+
+  drawFeather(x, y, angle, hue) {
+    push();
+    translate(x, y);
+    rotate(angle);
+    noStroke();
+    fill(hue, 90, 90);
+    arc(0, 0, 70, 20, PI, TWO_PI);
+    stroke(hue, 90, 60);
+    strokeWeight(2);
+    line(0, -5, 0, -35);
+    pop();
+  }
+
+  activatePowerup(type) {
+    this.powerupTimer = 300; // 5 seconds
+    this.shieldActive = (type === 'shield');
+    this.multiplierActive = (type === 'multiplier');
+  }
+}
+
+// --- Item Class ---
+class Item {
+  constructor(x, y, emoji, type, points, fatal = false) {
+    this.x = x;
+    this.y = y;
+    this.emoji = emoji;
+    this.type = type;
+    this.points = points;
+    this.fatal = fatal; // Is this item a game-over trigger?
+    this.size = 50;
+    this.speed = random(2, 5);
+  }
+
+  update() { this.y += this.speed; }
+  display() { textSize(this.size); textAlign(CENTER, CENTER); text(this.emoji, this.x, this.y); }
+  isOffscreen() { return this.y > height + this.size; }
+  hits(player) {
+    let playerY = height - 80;
+    return dist(this.x, this.y, player.x, playerY) < this.size / 2 + player.w / 2;
+  }
+}
+
+function setup() {
   createCanvas(windowWidth, windowHeight);
-  // Set color mode to HSB (Hue, Saturation, Brightness)
-  // Hue ranges from 0 to 360, Saturation and Brightness from 0 to 100
-  colorMode(HSB, 360, 100, 100);
+  colorMode(HSB, 360, 100, 100, 100);
+  player = new Player();
+  textAlign(CENTER, CENTER);
 }
 
 function draw() {
-  // Calculate a hue value that changes over time
-  // Use frameCount, which increments each frame
-  // Multiply by a small number to slow down the color change
-  // Use the modulo operator (%) to wrap the hue value around 360
-  let hue = (frameCount * 0.5) % 360;
-
-  // Set the background color using the calculated hue
-  // Keep saturation and brightness high for vivid colors
-  background(hue, 90, 90);
+  drawSambaBackground();
+  if (gameState === 'start') displayStartScreen();
+  else if (gameState === 'playing') runGame();
+  else if (gameState === 'gameOver') displayGameOverScreen();
 }
 
-// Optional: Resize the canvas if the browser window size changes
+function runGame() {
+  // --- Timer Check ---
+  let elapsedTime = (frameCount - startTime) / 60;
+  if (elapsedTime >= GAME_DURATION) {
+    gameState = 'gameOver';
+    gameOverReason = 'time';
+    return;
+  }
+
+  player.update();
+  player.display();
+
+  // --- Item Spawning ---
+  if (frameCount % 40 === 0) collectibles.push(new Item(random(width), -50, '📄', 'collectible', 10));
+  if (frameCount % 120 === 0) collectibles.push(new Item(random(width), -50, '💻', 'collectible', 25));
+  if (frameCount % 250 === 0) collectibles.push(new Item(random(width), -50, '📦', 'collectible', 50));
+  if (frameCount % 150 === 0) obstacles.push(new Item(random(width), -50, '🍮', 'obstacle', -40));
+  if (frameCount % 400 === 0) powerups.push(new Item(random(width), -50, '🪶', 'powerup', 'shield'));
+  if (frameCount % 550 === 0) powerups.push(new Item(random(width), -50, '❤️', 'powerup', 'multiplier'));
+  // The fatal "SVP Info" item - rare but dangerous!
+  if (frameCount % 601 === 0) obstacles.push(new Item(random(width), -50, '🚨', 'obstacle', 0, true));
+
+  handleItems(collectibles);
+  handleItems(obstacles);
+  handleItems(powerups);
+
+  displayScore(elapsedTime);
+}
+
+function handleItems(itemArray) {
+  for (let i = itemArray.length - 1; i >= 0; i--) {
+    let item = itemArray[i];
+    item.update();
+    item.display();
+
+    if (item.hits(player)) {
+      if (item.type === 'obstacle' && item.fatal) {
+        gameState = 'gameOver';
+        gameOverReason = 'fatal';
+        return; // Exit immediately
+      }
+
+      if (item.type === 'collectible') {
+        let pointsToAdd = player.multiplierActive ? item.points * 2 : item.points;
+        score += pointsToAdd;
+      } else if (item.type === 'obstacle') {
+        if (player.shieldActive) player.shieldActive = false;
+        else {
+          score += item.points;
+          if (score < 0) score = 0;
+        }
+      } else if (item.type === 'powerup') {
+        player.activatePowerup(item.points);
+      }
+      itemArray.splice(i, 1);
+    } else if (item.isOffscreen()) {
+      itemArray.splice(i, 1);
+    }
+  }
+}
+
+function drawSambaBackground() {
+  let hue = (frameCount * 0.5) % 360;
+  background(hue, 90, 90);
+  stroke(hue, 50, 100, 20);
+  strokeWeight(10);
+  for(let i = 0; i < 5; i++) {
+    let lineY = (frameCount * 5 + i * height/4) % height;
+    line(0, lineY, width, lineY);
+  }
+}
+
+function displayScore(elapsedTime) {
+  fill(0, 0, 100);
+  noStroke();
+  textSize(32);
+  textAlign(LEFT, TOP);
+  text("Score : " + score, 20, 20);
+
+  textAlign(RIGHT, TOP);
+  let timeLeft = ceil(GAME_DURATION - elapsedTime);
+  text("Temps : " + timeLeft, width - 20, 20);
+
+  textAlign(LEFT, TOP);
+  if(player.shieldActive) { fill(200, 80, 100); text("BOUCLIER PAILLETTES !", 20, 60); }
+  if(player.multiplierActive) { fill(50, 100, 100); text("SCORE x2 ! MERCI LE HUB !", 20, 60); }
+}
+
+function displayStartScreen() {
+  fill(0, 0, 0, 50);
+  rectMode(CORNER);
+  rect(0, 0, width, height);
+
+  fill(0, 0, 100);
+  noStroke();
+  textAlign(CENTER, CENTER);
+
+  textSize(min(width/10, 64));
+  text("SAMBA DE GALEC", width / 2, height / 2 - 180);
+  textSize(min(width/25, 32));
+  text("Archivez, Dansez, Défilez !", width / 2, height / 2 - 120);
+
+  textSize(min(width/40, 20));
+  text("Collectez Papiers 📄, Fichiers 💻 et Cartons 📦.", width / 2, height / 2 - 50);
+  text("Attrapez Plumes 🪶 et Likes ❤️ pour des bonus.", width / 2, height / 2 - 20);
+  fill(300, 90, 100);
+  text("La partie dure 30 secondes. ÉVITEZ l'alerte SVP Info 🚨 !", width / 2, height / 2 + 20);
+
+  fill(0, 0, 100);
+  textSize(min(width/30, 28));
+  text("Cliquez pour commencer !", width / 2, height / 2 + 100);
+}
+
+function displayGameOverScreen() {
+  fill(0, 0, 0, 50);
+  rectMode(CORNER);
+  rect(0, 0, width, height);
+
+  fill(0, 0, 100);
+  noStroke();
+  textAlign(CENTER, CENTER);
+
+  let reasonText = '';
+  if (gameOverReason === 'time') {
+    reasonText = "Temps écoulé !";
+  } else if (gameOverReason === 'fatal') {
+    reasonText = "Oh non ! SVP Info a tout confisqué !";
+  }
+
+  textSize(min(width/15, 64));
+  text(reasonText, width / 2, height / 2 - 100);
+
+  textSize(min(width/25, 32));
+  text("Votre score final : " + score, width / 2, height / 2);
+
+  textSize(min(width/30, 28));
+  text("Cliquez pour rejouer", width / 2, height / 2 + 80);
+}
+
+function mousePressed() {
+  if (gameState === 'start' || gameState === 'gameOver') {
+    score = 0;
+    collectibles = [];
+    obstacles = [];
+    powerups = [];
+    player = new Player();
+    startTime = frameCount;
+    gameState = 'playing';
+  }
+}
+
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-}`;
-
-const EXAMPLE_PROMPTS = [
-  'make an arcade game',
-  'make a bouncing yellow ball within a square, make sure to handle collision detection properly. make the square slowly rotate. make sure ball stays within the square',
-  'make a smoke simulation made of puffy trails of smoke over a green landscape',
-  'create a game where a space ship shoots asteroids flying around me in space',
-];
-
-const ai = new GoogleGenAI({
-  apiKey: globalThis.process.env.GEMINI_API_KEY,
-  apiVersion: 'v1alpha',
-});
-
-function createAiChat() {
-  return ai.chats.create({
-    model: 'gemini-2.5-pro',
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTIONS,
-      thinkingConfig: {
-        includeThoughts: true,
-      },
-    },
-  });
 }
+`;
 
-let aiChat = createAiChat();
-
-function getCode(text: string) {
-  const startMark = '```javascript';
-  const codeStart = text.indexOf(startMark);
-  let codeEnd = text.lastIndexOf('```');
-
-  if (codeStart > -1) {
-    if (codeEnd < 0) {
-      codeEnd = undefined;
-    }
-    return text.substring(codeStart + startMark.length, codeEnd);
-  }
-  return '';
-}
-
+// Le code de démarrage est maintenant très simple.
 document.addEventListener('DOMContentLoaded', async (event) => {
   const rootElement = document.querySelector('#root')! as HTMLElement;
 
   const playground = new Playground();
   rootElement.appendChild(playground);
 
-  // On vérifie si la clé API existe AVANT de configurer le chat
-  if (globalThis.process.env.GEMINI_API_KEY) {
-    const ai = new GoogleGenAI({
-      apiKey: globalThis.process.env.GEMINI_API_KEY,
-      apiVersion: 'v1alpha',
-    });
-
-    function createAiChat() {
-      return ai.chats.create({
-        model: 'gemini-2.5-pro',
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTIONS,
-          thinkingConfig: {
-            includeThoughts: true,
-          },
-        },
-      });
-    }
-
-    let aiChat = createAiChat();
-
-    playground.sendMessageHandler = async (
-      input: string,
-      role: string,
-      code: string,
-      codeHasChanged: boolean,
-    ) => {
-      console.log(
-        'sendMessageHandler',
-        input,
-        role,
-        code,
-        'codeHasChanged:',
-        codeHasChanged,
-      );
-
-      const {thinking, text} = playground.addMessage('assistant', '');
-      const message = [];
-
-      if (role.toUpperCase() === 'USER' && codeHasChanged) {
-        message.push({
-          role: 'user',
-          text: 'I have updated the code: ```javascript\n' + code + '\n```',
-        });
-      }
-
-      if (role.toUpperCase() === 'SYSTEM') {
-        message.push({
-          role: 'user',
-          text: `Interpreter reported: ${input}. Is it possible to improve that?`,
-        });
-      } else {
-        message.push({
-          role,
-          text: input,
-        });
-      }
-
-      playground.setChatState(ChatState.GENERATING);
-
-      text.innerHTML = '...';
-
-      let newCode = '';
-      let thought = '';
-
-      try {
-        const res = await aiChat.sendMessageStream({message});
-
-        for await (const chunk of res) {
-          for (const candidate of chunk.candidates ?? []) {
-            for (const part of candidate.content.parts ?? []) {
-              if (part.thought) {
-                playground.setChatState(ChatState.THINKING);
-                thought += part.text;
-                thinking.innerHTML = await marked.parse(thought);
-                thinking.parentElement.classList.remove('hidden');
-              } else if (part.text) {
-                playground.setChatState(ChatState.CODING);
-                newCode += part.text;
-                const p5Code = getCode(newCode);
-
-                // Remove the code block, it is available in the Code tab
-                const explanation = newCode.replace(
-                  '```javascript' + p5Code + '```',
-                  '',
-                );
-
-                text.innerHTML = await marked.parse(explanation);
-              }
-              playground.scrollToTheEnd();
-            }
-          }
-        }
-      } catch (e: any) { // Changed to 'any' to handle broader error types
-        console.error('GenAI SDK Error:', e.message);
-        let message = e.message;
-        const splitPos = e.message.indexOf('{');
-        if (splitPos > -1) {
-          const msgJson = e.message.substring(splitPos);
-          try {
-            const sdkError = JSON.parse(msgJson);
-            if (sdkError.error) {
-              message = sdkError.error.message;
-              message = await marked.parse(message);
-            }
-          } catch (e) {
-            console.error('Unable to parse the error message:', e);
-          }
-        }
-        const {text} = playground.addMessage('error', '');
-        text.innerHTML = message;
-      }
-
-      // close thinking block
-      thinking.parentElement.removeAttribute('open');
-
-      // If the answer was just code
-      if (text.innerHTML.trim().length === 0) {
-        text.innerHTML = 'Done';
-      }
-
-      const p5Code = getCode(newCode);
-      if (p5Code.trim().length > 0) {
-        playground.setCode(p5Code);
-      } else {
-        playground.addMessage('SYSTEM', 'There is no new code update.');
-      }
-      playground.setChatState(ChatState.IDLE);
-    };
-
-    playground.resetHandler = async () => {
-      aiChat = createAiChat();
-    };
-
-    playground.addMessage(
-      'USER',
-      'make a simple animation of the background color',
-    );
-    playground.addMessage('ASSISTANT', 'Here you go!');
-    playground.setInputField(
-      'Start from scratch and ' +
-        EXAMPLE_PROMPTS[Math.floor(Math.random() * EXAMPLE_PROMPTS.length)],
-    );
-
-  } else {
-    // Si pas de clé API, on désactive le chat
-    console.log("No API Key found. Chat functionality disabled.");
-    const input = document.getElementById('messageInput') as HTMLInputElement;
-    if (input) {
-        input.placeholder = "Le chat IA est désactivé sur cette version.";
-        input.disabled = true;
-    }
-    const sendButton = document.getElementById('sendButton');
-    if (sendButton) {
-        sendButton.classList.add('disabled');
-    }
-  }
-
-  // Ce code s'exécute dans tous les cas pour afficher le jeu
+  // On dit simplement au playground quel code p5.js il doit exécuter.
   playground.setDefaultCode(EMPTY_CODE);
   playground.setCode(STARTUP_CODE);
 });
