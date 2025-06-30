@@ -224,20 +224,44 @@ function displayStartScreen() {
   noStroke();
   textAlign(CENTER, CENTER);
 
-  textSize(min(width/10, 64));
-  text("SAMBA DE GALEC", width / 2, height / 2 - 180);
-  textSize(min(width/25, 32));
-  text("Archivez, Dansez, Défilez !", width / 2, height / 2 - 120);
+  // Titre et sous-titre
+  textSize(min(width / 12, 60));
+  text("SAMBA DE GALEC", width / 2, height / 2 - 250);
+  textSize(min(width / 28, 30));
+  text("Archivez, Dansez, Défilez !", width / 2, height / 2 - 200);
 
-  textSize(min(width/40, 20));
-  text("Collectez Papiers 📄, Fichiers 💻 et Cartons 📦.", width / 2, height / 2 - 50);
-  text("Attrapez Plumes 🪶 et Likes ❤️ pour des bonus.", width / 2, height / 2 - 20);
+  // --- Guide des objets ---
+  let yPos = height / 2 - 140;
+  const yStep = min(height / 30, 28);
+  const guideTextSize = min(width / 55, 18);
+  textSize(guideTextSize);
+
+  // Collectibles
+  text("Les Collectibles (bons pour le score) :", width / 2, yPos); yPos += yStep;
+  text("📄 Le Document Papier : Le gain de base.", width / 2, yPos); yPos += yStep;
+  text("💻 Le Fichier Numérique : Rapporte plus de points.", width / 2, yPos); yPos += yStep;
+  text("📦 Le Carton d'Archives : Le jackpot !", width / 2, yPos); yPos += yStep * 1.5;
+
+  // Bonus
+  text("Les Bonus (à attraper !) :", width / 2, yPos); yPos += yStep;
+  text("🪶 La Plume Pailletée : Vous donne un bouclier temporaire.", width / 2, yPos); yPos += yStep;
+  text("❤️ Le Like du Hub : Active un multiplicateur de score \\"x2\\".", width / 2, yPos); yPos += yStep * 1.5;
+
+  // Obstacles
+  text("Les Obstacles (attention !) :", width / 2, yPos); yPos += yStep;
+  text("🍮 Le Flan Pâtissier : Vous fait perdre quelques points.", width / 2, yPos); yPos += yStep;
   fill(300, 90, 100);
-  text("La partie dure 30 secondes. ÉVITEZ l'alerte SVP Info 🚨 !", width / 2, height / 2 + 20);
+  text("🚨 L'Alerte SVP Info : Obstacle fatal, la partie est terminée si vous le touchez !", width / 2, yPos); yPos += yStep * 1.5;
 
+  // Message final
   fill(0, 0, 100);
-  textSize(min(width/30, 28));
-  text("Cliquez pour commencer !", width / 2, height / 2 + 100);
+  textSize(min(width / 45, 19));
+  text("Partagez votre meilleur score et voyons qui sera le champion de l'archivage ! 🏆", width / 2, yPos);
+  yPos += yStep * 1.5;
+
+  // Appel à l'action
+  textSize(min(width / 30, 28));
+  text("Cliquez pour commencer !", width / 2, yPos + 20);
 
   // --- AJOUT DES CRÉDITS ---
   fill(0, 0, 100, 50); // Blanc, 50% transparent
