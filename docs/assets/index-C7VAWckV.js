@@ -389,6 +389,12 @@ function displayStartScreen() {
   fill(0, 0, 100);
   textSize(min(width/30, 28));
   text("Cliquez pour commencer !", width / 2, height / 2 + 100);
+
+  // --- AJOUT DES CRÉDITS ---
+  fill(0, 0, 100, 50); // Blanc, 50% transparent
+  textSize(14);
+  textAlign(RIGHT, BOTTOM);
+  text("Jeu créé par Romain Douineau de l'équipe maCave à l'aide de Gemini 🦾🧔🏽", width - 10, height - 10);
 }
 
 function displayGameOverScreen() {
@@ -415,6 +421,12 @@ function displayGameOverScreen() {
 
   textSize(min(width/30, 28));
   text("Cliquez pour rejouer", width / 2, height / 2 + 80);
+  
+  // --- AJOUT DES CRÉDITS ---
+  fill(0, 0, 100, 50); // Blanc, 50% transparent
+  textSize(14);
+  textAlign(RIGHT, BOTTOM);
+  text("Jeu créé par Romain Douineau de l'équipe maCave à l'aide de Gemini 🦾🧔🏽", width - 10, height - 10);
 }
 
 function mousePressed() {
