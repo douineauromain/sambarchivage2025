@@ -1,8 +1,8 @@
 # 🕹️ Samba de Galec : Le Jeu !
 
-Bienvenue dans le dépôt du mini-jeu officiel de l'événement d'archivage **"SAMBA DE GALEC… Archivez, Dansez, Défilez !"**.
+Bienvenue dans le dépôt du mini-jeu de l'événement d'archivage **"SAMBA DE GALEC… Archivez, Dansez, Défilez !"**.
 
-Ce petit jeu a été créé avec l'aide de l'IA **Google Gemini** pour célébrer de manière ludique notre journée de tri et d'archivage du 27 juin. L'objectif est simple : collectez un maximum de documents pour faire le meilleur score, mais attention aux obstacles !
+Ce petit jeu a été créé avec l'aide de l'IA **Google Gemini** et **Google AI Studio** pour célébrer de manière ludique notre journée de tri et d'archivage du 27 juin. L'objectif est simple : collectez un maximum de documents pour faire le meilleur score, mais attention aux obstacles !
 
 ## 🎮 Comment jouer ?
 
